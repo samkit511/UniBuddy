@@ -4,7 +4,7 @@ import { useAuthModal } from '../context/AuthModalContext';
 import iconImg from '../assets/5500_1_04.jpg';
 import { X, Send, Bot } from 'lucide-react';
 
-const API_URL = 'http://127.0.0.1:9000/chat';
+const API_URL = `${import.meta.env.VITE_API_URL}/chat`;
 
 interface Message {
   role: 'user' | 'assistant';

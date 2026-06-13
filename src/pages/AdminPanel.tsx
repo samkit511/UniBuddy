@@ -109,7 +109,7 @@ export default function AdminPanel() {
   });
 
   // API Base URL
-  const API_URL = "http://localhost:5000/api/students";
+  const API_URL = `${import.meta.env.VITE_AUTH_URL}/api/students`;
 
   // Fetch Students
   const fetchStudents = async () => {

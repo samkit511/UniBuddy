@@ -45,7 +45,7 @@ export default function TimetableUpload() {
     const form = new FormData();
     form.append("file", file);
     try {
-      const res = await axios.post("http://localhost:9000/timetable", form, {
+      const res = await axios.post("http://10.10.135.52:9000/timetable", form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setResult(res.data);

@@ -31,18 +31,32 @@ export default function MentorUpload() {
     const form = new FormData();
     form.append("file", file);
     try {
-      const res = await axios.post("http://localhost:9000/mentor-mentee", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      setResult(res.data);
-      toast.success(res.data.message || "Mentor-mentee data uploaded successfully!");
-    } catch (err: any) {
-      const detail = err?.response?.data?.detail || "Failed to upload file.";
-      toast.error(detail);
-    } finally {
-      setLoading(false);
+  const res = await axios.post(
+    "http://10.10.135.52:9000/mentor-mentee",
+    form,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
     }
-  };
+  );
+
+    console.log("SUCCESS RESPONSE:", res.data);
+
+  setResult(res.data);
+  toast.success(res.data.message || "Uploaded successfully!");
+} catch (err: any) {
+  console.log("ERROR:", err);
+  console.log(err.response);
+  console.log(err.response?.data);
+
+  toast.error(
+    err.response?.data?.message || "Upload failed. Please try again."
+  );
+} finally {
+  setLoading(false);
+}
+};
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
