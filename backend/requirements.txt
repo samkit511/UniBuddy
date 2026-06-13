@@ -52,6 +52,7 @@ python-dateutil>=2.8.2
 urllib3>=2.1.0
 jsonlines>=4.0.0
 typing-extensions>=4.8.0
+pypdf>=4.3.0
 
 # Testing
 pytest>=7.4.3

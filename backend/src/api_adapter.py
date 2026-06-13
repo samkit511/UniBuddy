@@ -5,14 +5,14 @@ from src.threaded_rag import ThreadedRAGSystem
 from src.threaded_models import ThreadedModelManager
 from src.config import DEBUG_RAG, TOP_K_RESULTS
 from src.timetable_lookup import get_timetable_context
+from src.timetable_store import answer_timetable_query, is_timetable_intent, has_active_timetable_session, is_timetable_escape
+from src.mentor_store import answer_mentor_query, is_mentor_intent
 
 rag = ThreadedRAGSystem()
 models = ThreadedModelManager()
 session_histories: Dict[str, deque] = defaultdict(lambda: deque(maxlen=10))
 
 PROMPT_TEMPLATE = '''System: You are UniBuddy, the official intelligent assistant for GD Goenka University. Use ONLY the retrieved context and conversation history. Answer concisely (2–6 sentences) and include sources. If a field is missing, say "Not available in sources".
-
-{STUDENT_CONTEXT}
 
 Retrieved Context:
 {RAG_CONTEXT}
@@ -23,7 +23,7 @@ Conversation History:
 Current Question:
 {USER_QUESTION}
 
-Provide a short factual summary suitable for display (2–6 sentences), then a structured block with headings: Role, Location, Education (short), Research Interests (short), Experience (short), Links, Sources.
+Provide a short factual summary (2–6 sentences), then a structured block with headings: Role, Location, Education (short), Research Interests (short), Experience (short). Do NOT include a Sources or Links section.
 '''
 
 FOLLOWUP_RE = re.compile(r"\b(him|her|them|his|hers|more about|details|research|publications)\b", re.I)
@@ -130,12 +130,15 @@ def parse_structured_from_text(text: str) -> Dict[str,Any]:
 
 
 def _sanitize_visible_text(text: str) -> str:
-    # remove both literal and escaped forms of debug tags
+    # remove debug tags
     text = re.sub(r"(?i)(?:<current_tab_state>[\s\S]*?</current_tab_state>|\\u003ccurrent_tab_state\\u003e[\s\S]*?\\u003c\\/current_tab_state\\u003e)", "", text)
     # remove inline [Source: ...] markers
-    text = re.sub(r"(\[Source:[^\]]+\])", "", text)
+    text = re.sub(r"\[Source:[^\]]+\]", "", text)
+    # remove "Retrieved Context: ..." lines that the LLM echoes back
+    text = re.sub(r"[-*•]\s*Retrieved Context:[^\n]*", "", text)
+    text = re.sub(r"Retrieved Context:[^\n]*", "", text)
     # collapse repeated separators
-    text = re.sub(r"(\s*---\s*)+","\n---\n", text)
+    text = re.sub(r"(\s*---\s*)+", "\n---\n", text)
     # strip debug lines
     text = "\n".join(l for l in text.splitlines() if not re.search(r"^(Local Machine:|Open Widgets:)", l))
     return text.strip()
@@ -146,6 +149,38 @@ def get_reply(user_message: str, session_id: str = None, user_profile: Dict = No
     if not user_message:
         user_message = ''
     user_message = re.sub(r"(?i)(?:<current_tab_state>[\s\S]*?</current_tab_state>|\\u003ccurrent_tab_state\\u003e[\s\S]*?\\u003c\\/current_tab_state\\u003e)", "", user_message).strip()
+
+    # --- Routing priority ---
+    # 1. If timetable session is mid-flow, let it handle everything first
+    # 2. Otherwise, mentor queries take priority (to avoid 'how many' / 'faculty' clashes)
+    # 3. Then timetable for fresh timetable queries
+    # 4. Finally RAG
+
+    history = list(session_histories.get(session_id, []))
+
+    # If already in a timetable conversation, keep it there — unless it's an escape query
+    if has_active_timetable_session(session_id) and not is_timetable_escape(user_message):
+        timetable_answer = answer_timetable_query(user_message, session_id=session_id, history=history)
+        if timetable_answer:
+            if session_id:
+                _store_session(session_id, user_message, timetable_answer)
+            return {'reply': timetable_answer, 'data': {}, 'sources': []}
+
+    # Mentor-Mentee fast-path (before timetable to avoid 'how many'/'faculty' clashes)
+    if is_mentor_intent(user_message):
+        mentor_answer = answer_mentor_query(user_message)
+        if mentor_answer:
+            if session_id:
+                _store_session(session_id, user_message, mentor_answer)
+            return {'reply': mentor_answer, 'data': {}, 'sources': []}
+
+    # Timetable fast-path for fresh queries
+    timetable_answer = answer_timetable_query(user_message, session_id=session_id, history=history)
+    if timetable_answer:
+        if session_id:
+            _store_session(session_id, user_message, timetable_answer)
+        return {'reply': timetable_answer, 'data': {}, 'sources': []}
+    # -------------------------------------------------------------------------
 
     # Build student context block if profile provided
     student_context = ""
@@ -209,40 +244,48 @@ def get_reply(user_message: str, session_id: str = None, user_profile: Dict = No
 
     # sanitize visible reply
     text = _sanitize_visible_text(text)
-    # dedupe / truncate
     text = dedupe_sentences(text)
     short = summarize_text(text, max_sentences=5)
 
-    # build structured data from the sanitized text for parsing
     structured = parse_structured_from_text(text)
 
-    # format HTML reply (short summary + structured block). frontend will render structured separately
+    # Build clean HTML — summary first, then only non-empty structured fields
     html_parts = []
     if short:
         short_clean = re.sub(r"^[\s\-\.:]+", '', short).strip()
         short_clean = re.sub(r"(---\s*\.?\s*)+", "\n", short_clean)
-        html_parts.append(f"<div>{short_clean}</div>")
-    # structured block (no title/name here to avoid duplication)
+        # Strip any leftover "Retrieved Context:" lines from summary
+        short_clean = re.sub(r"Retrieved Context:[^\n<]*", "", short_clean).strip()
+        if short_clean:
+            html_parts.append(f"<div>{short_clean}</div>")
+
     block = []
     if structured.get('role'):
-        block.append(f"<div><strong>Role:</strong> {structured.get('role')}</div>")
+        block.append(f"<div><strong>Role:</strong> {structured['role']}</div>")
     if structured.get('location'):
-        block.append(f"<div><strong>Location:</strong> {structured.get('location')}</div>")
+        block.append(f"<div><strong>Location:</strong> {structured['location']}</div>")
     if structured.get('education'):
-        eds = ''.join(f"<li>{e}</li>" for e in structured.get('education'))
+        eds = ''.join(f"<li>{e}</li>" for e in structured['education'])
         block.append(f"<div><strong>Education:</strong><ul style='margin:6px 0 0 18px'>{eds}</ul></div>")
     if structured.get('research'):
-        rrs = ''.join(f"<li>{r}</li>" for r in structured.get('research'))
+        rrs = ''.join(f"<li>{r}</li>" for r in structured['research'])
         block.append(f"<div><strong>Research Interests:</strong><ul style='margin:6px 0 0 18px'>{rrs}</ul></div>")
     if structured.get('experience'):
-        exs = ''.join(f"<li>{e}</li>" for e in structured.get('experience'))
+        exs = ''.join(f"<li>{e}</li>" for e in structured['experience'])
         block.append(f"<div><strong>Experience:</strong><ul style='margin:6px 0 0 18px'>{exs}</ul></div>")
-    if structured.get('links'):
-        links = ''.join(f"<li><a href='{l}' target='_blank'>{l}</a></li>" for l in structured.get('links'))
+    # Only show real URLs, not "Retrieved Context:" strings
+    real_links = [l for l in structured.get('links', []) if l.startswith('http')]
+    if real_links:
+        links = ''.join(f"<li><a href='{l}' target='_blank'>{l}</a></li>" for l in real_links[:3])
         block.append(f"<div><strong>Links:</strong><ul style='margin:6px 0 0 18px'>{links}</ul></div>")
-    if structured.get('sources'):
-        srcs = ''.join(f"<li><a href='{s}' target='_blank'>{s}</a></li>" for s in structured.get('sources'))
+    # Cap sources at 3 unique real URLs only
+    real_sources = list(dict.fromkeys(
+        s for s in structured.get('sources', []) if s.startswith('http')
+    ))[:3]
+    if real_sources:
+        srcs = ''.join(f"<li><a href='{s}' target='_blank'>{s}</a></li>" for s in real_sources)
         block.append(f"<div><strong>Sources:</strong><ul style='margin:6px 0 0 18px'>{srcs}</ul></div>")
+
     if block:
         html_parts.append('<div style="margin-top:8px">' + ''.join(block) + '</div>')
 

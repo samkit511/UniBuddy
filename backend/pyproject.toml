@@ -44,6 +44,7 @@ dependencies = [
     "rich>=13.7.0",
     "pandas>=2.1.4",
     "numpy>=1.25.2",
+    "pypdf>=4.3.0",
 ]
 
 [project.optional-dependencies]

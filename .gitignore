@@ -27,6 +27,12 @@ logs/
 *.jks
 *.credentials
 
+# Generated / uploaded data (may contain PII or large files)
+backend/data/mentor_mentee.json
+backend/data/timetables.json
+backend/data/timetable_sessions.json
+backend/data/*.db
+
 # Node / frontend
 node_modules/
 .npm/

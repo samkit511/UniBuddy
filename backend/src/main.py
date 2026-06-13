@@ -8,7 +8,10 @@ from typing import Optional, List, Dict, Any
 # Minimal RAGSystem kept for backend use. CLI removed.
 import faiss
 from sentence_transformers import SentenceTransformer
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+except ImportError:
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 try:
     from src.config import settings

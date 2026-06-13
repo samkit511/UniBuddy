@@ -75,7 +75,7 @@ const EmailVerificationPage = () => {
 		try {
 			await logout();
 			navigate('/');
-			toast.info('Verification cancelled');
+			toast.success('Verification cancelled');
 		} catch (error) {
 			console.error('Logout error:', error);
 			navigate('/');

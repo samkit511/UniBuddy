@@ -5,13 +5,15 @@ import {
   Users, Plus, Edit2, Trash2, Search, X, 
   Filter, Download, RefreshCw,
   ChevronLeft, ChevronRight, AlertCircle,
-  CheckCircle, XCircle, Loader
+  CheckCircle, XCircle, Loader, CalendarDays, UserCheck
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import Chatbot from "../components/Chatbot";
 import Navbar from "../components/Navbar";
+import TimetableUpload from "../components/TimetableUpload";
+import MentorUpload from "../components/MentorUpload";
 
 interface StudentForm {
   name: string;
@@ -107,7 +109,7 @@ export default function AdminPanel() {
   });
 
   // API Base URL
-  const API_URL = "http://localhost:5000/api/students";
+  const API_URL = `${import.meta.env.VITE_AUTH_URL}/api/students`;
 
   // Fetch Students
   const fetchStudents = async () => {
@@ -326,6 +328,8 @@ export default function AdminPanel() {
     toast.success("Exported successfully!");
   };
 
+  const [activeTab, setActiveTab] = useState<"students" | "timetable" | "mentor">("students");
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       <Navbar />
@@ -339,15 +343,61 @@ export default function AdminPanel() {
           animate={{ opacity: 1, y: 0 }}
           className="bg-slate-900/95 backdrop-blur-xl rounded-2xl border border-slate-800 p-6 mb-6 shadow-2xl"
         >
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-indigo-400 text-transparent bg-clip-text mb-2">
-              Admin Panel
-            </h1>
-            <p className="text-slate-400 text-sm">Manage student records and information</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-indigo-400 text-transparent bg-clip-text mb-2">
+                Admin Panel
+              </h1>
+              <p className="text-slate-400 text-sm">Manage student records and information</p>
+            </div>
+            {/* Tab switcher */}
+            <div className="flex gap-2 bg-slate-800 p-1 rounded-xl">
+              <button
+                onClick={() => setActiveTab("students")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === "students" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}
+              >
+                <Users size={15} /> Students
+              </button>
+              <button
+                onClick={() => setActiveTab("timetable")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === "timetable" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"}`}
+              >
+                <CalendarDays size={15} /> Timetable
+              </button>
+              <button
+                onClick={() => setActiveTab("mentor")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === "mentor" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"}`}
+              >
+                <UserCheck size={15} /> Mentor-Mentee
+              </button>
+            </div>
           </div>
         </motion.div>
 
-        {/* Statistics Cards */}
+        {/* Timetable Tab */}
+        {activeTab === "timetable" && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+            className="bg-slate-900/95 backdrop-blur-xl rounded-2xl border border-slate-800 p-6 shadow-2xl">
+            <h2 className="text-xl font-semibold text-white mb-4">Upload Timetable PDF</h2>
+            <p className="text-slate-400 text-sm mb-6">Upload a GD Goenka University timetable PDF to extract structured JSON data.</p>
+            <TimetableUpload />
+          </motion.div>
+        )}
+
+        {/* Mentor-Mentee Tab */}
+        {activeTab === "mentor" && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+            className="bg-slate-900/95 backdrop-blur-xl rounded-2xl border border-slate-800 p-6 shadow-2xl">
+            <h2 className="text-xl font-semibold text-white mb-2">Upload Mentor-Mentee Data</h2>
+            <p className="text-slate-400 text-sm mb-6">
+              Upload the mentor-mentee allocation Excel sheet. Students can then query their mentor details via the chatbot.
+            </p>
+            <MentorUpload />
+          </motion.div>
+        )}
+
+        {/* Students Tab */}
+        {activeTab === "students" && (<div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           {[
             { label: "Total Students", value: stats.total, color: "from-blue-600 to-blue-700", icon: Users },
@@ -563,7 +613,12 @@ export default function AdminPanel() {
             </>
           )}
         </motion.div>
-      </div>
+
+        {/* Close students tab wrapper */}
+        </div>)}
+
+        </div>{/* end max-w-7xl */}
+      </div>{/* end pt-24 */}
 
       {/* Add/Edit Modal */}
       <AnimatePresence>
@@ -869,7 +924,6 @@ export default function AdminPanel() {
 
       {/* Chatbot Widget */}
       <Chatbot />
-      </div>
     </div>
   );
 }
